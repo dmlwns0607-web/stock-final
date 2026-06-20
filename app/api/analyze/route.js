@@ -33,9 +33,10 @@ export async function POST(req) {
       changePercent = `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
     }
 
-    // 2. 구글 Gemini 정식 버전(v1) 주소로 안정적이게 호출
+    // 2. 구글 Gemini 정식 규격 주소 (v1/models/gemini-1.5-flash) 적용
     const prompt = `미국 주식 시장의 ${symbol} (현재가: $${price}, 전일 대비 변동률: ${changePercent}) 종목에 대한 최근 시장 평가와 기업 가치(PER/PBR 추정치 포함)를 바탕으로 간결하고 전문적인 투자 리포트를 한국어로 요약해서 작성해줘.`;
 
+    // 경로에 v1/models/를 명확히 포함하여 호출합니다.
     const geminiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
 
     const geminiRes = await fetch(geminiUrl, {
