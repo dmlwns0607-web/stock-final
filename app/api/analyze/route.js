@@ -33,23 +33,22 @@ export async function POST(req) {
       changePercent = `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
     }
 
-    // 2. 완전 무료 구글 Gemini AI 모델에 리포트 요약 요청
+    // 2. 구글 Gemini 정식 버전(v1) 주소로 안정적이게 호출
     const prompt = `미국 주식 시장의 ${symbol} (현재가: $${price}, 전일 대비 변동률: ${changePercent}) 종목에 대한 최근 시장 평가와 기업 가치(PER/PBR 추정치 포함)를 바탕으로 간결하고 전문적인 투자 리포트를 한국어로 요약해서 작성해줘.`;
 
-    const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }]
-        }),
-      }
-    );
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
+
+    const geminiRes = await fetch(geminiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }]
+      }),
+    });
 
     const geminiData = await geminiRes.json();
     
-    // 만약 구글 AI가 에러를 뱉었을 경우 체크
+    // 구글 API 측 에러 반환 예외 처리
     if (geminiData.error) {
       return NextResponse.json({ error: `AI 에러: ${geminiData.error.message}` }, { status: 500 });
     }
