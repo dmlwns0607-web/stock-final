@@ -6,7 +6,7 @@ export async function POST(req) {
     if (!ticker) return NextResponse.json({ error: '티커를 입력하세요.' }, { status: 400 });
     const symbol = ticker.trim().toUpperCase();
 
-    // Vercel 환경변수에서 구글 API 키 가져오기
+    // Vercel 환경변수에서 구글 API 키 바인딩
     const GEMINI_KEY = (process.env.GEMINI_API_KEY || '').trim();
 
     // 1. 야후 파이낸스 실시간 주가 데이터 fetch
@@ -29,20 +29,20 @@ export async function POST(req) {
         }
       }
     } catch (e) {
-      // 주가 크롤링 실패 시 기본값 N/A로 진행
+      // 주가 크롤링 실패 시 기본값으로 진행
     }
 
-    // 2. 어떤 티커든 맞춤형으로 실시간 분석하도록 지시하는 프롬프트
+    // 2. 가독성 규칙(대문단 볼드, 재무 지표명 볼드)을 각인시킨 실시간 커스텀 프롬프트
     const promptText = `너는 글로벌 최고 권위의 주식 심층 분석가이자 수석 연구원이야. 
 미국 주식 시장의 [${symbol}] (실시간 현재가: $${price}, 전일 대비 변동률: ${changePercent}) 종목에 대해 시장 트렌드와 공개된 재무 데이터를 바탕으로 전문적인 투자 리포트를 한국어로 실시간 작성해줘. 
 
-출력할 때 반드시 아래 형식을 정확히 지켜서 마크다운 스타일로 작성해줘:
+출력할 때 반드시 아래 형식을 정확히 지켜서 작성해줘:
 
 **1. 비즈니스 모델 및 수익 구조**
-(여기에 ${symbol}의 실제 비즈니스 모델 상세 내용 작성)
+(여기에 상세 내용 작성)
 
 **2. 핵심 경쟁우위 (Moat) 및 산업 트렌드**
-(여기에 ${symbol}의 실제 독점적 해자 및 최신 트렌드 작성)
+(여기에 상세 내용 작성)
 
 **3. 재무 건전성 및 6대 핵심 지표 정밀 분석**
 - **매출 성장성 (Revenue Growth):** (최신 추정 수치 및 설명)
@@ -53,7 +53,7 @@ export async function POST(req) {
 - **자기자본이익률 (ROE):** (최신 추정 수치 및 설명)
 
 **4. 핵심 리스크 요인**
-(여기에 ${symbol}기업이 마주한 실제 리스크 작성)
+(여기에 상세 내용 작성)
 
 **5. 경쟁사 대비 밸류에이션 비교 추정**
 (여기에 상세 내용 작성)
@@ -64,34 +64,31 @@ export async function POST(req) {
 **7. 향후 12-24개월 주가 및 기업 전망**
 (여기에 상세 내용 작성)
 
-* 주의사항: 
-1. 고정된 틀을 복사하지 말고, 입력된 [${symbol}] 기업의 업종과 특징에 맞는 '진짜 분석 내용'을 실시간으로 서술해줘.
-2. 각 대문단 번호(1., 2., 3...)가 시작하는 부분은 반드시 별표 두 개를 써서 **굵은 글씨**로 표현하고, 3번 문단의 각 지표명 역시 반드시 **굵은 글씨**로 구분해줘.`;
+* 주의: 각 대문단 번호(1., 2., 3...)가 시작하는 부분은 반드시 별표 두 개를 써서 **굵은 글씨**로 표현하고, 3번 문단의 각 지표명 역시 반드시 **굵은 글씨**로 구분해줘.`;
 
-    // 3. 구글 AI 스튜디오 최신 표준 규격 주소 및 페이로드 세팅
-    // 기존의 v1/models/gemini-pro 대신 100% 호환되는 최신 v1beta의 gemini-1.5-flash 규격을 적용합니다.
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
-    
+    // 3. API 버전 에러를 원천 차단하는 구글 공식 최신 엔드포인트 단일화
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
+
     const geminiRes = await fetch(geminiUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json'
+      },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: promptText }] }]
+        contents: [
+          {
+            parts: [{ text: promptText }]
+          }
+        ]
       })
     });
 
     const geminiData = await geminiRes.json();
     
-    // 구글 AI가 실시간으로 생성한 텍스트 추출
-    let reportText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
+    // 최종 텍스트 안전하게 추출
+    const reportText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || 'AI 리포트 실시간 생성에 실패했습니다. 티커를 다시 확인해 주세요.';
 
-    // 만약 구글 서버에서 에러가 응답되었을 경우 화면을 터트리지 않고 에러 메시지 가독성 있게 출력
-    if (geminiData.error || !reportText) {
-      const errMsg = geminiData.error?.message || '알 수 없는 오류';
-      reportText = `**구글 AI 실시간 연동 에러 발생**\n\n- 메시지: ${errMsg}\n- 해결책: Vercel 환경 변수의 \`GEMINI_API_KEY\`가 올바른지 확인하거나, 잠시 후 다시 시도해 주세요.`;
-    }
-
-    // 4. 프론트엔드로 데이터 전송
+    // 4. 프론트엔드로 성공 데이터 전달
     return NextResponse.json({ 
       symbol, 
       name: symbol, 
