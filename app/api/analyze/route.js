@@ -29,14 +29,14 @@ export async function POST(req) {
         }
       }
     } catch (e) {
-      // 주가 긁어오기 실패 시 N/A 상태로 AI에게 넘김
+      // 주가 크롤링 실패 시 기본값 N/A로 진행
     }
 
-    // 2. 어떤 티커든 제미나이가 6대 지표를 실시간으로 채우도록 만드는 완벽한 프롬프트
+    // 2. 어떤 티커든 맞춤형으로 실시간 분석하도록 지시하는 프롬프트
     const promptText = `너는 글로벌 최고 권위의 주식 심층 분석가이자 수석 연구원이야. 
-미국 주식 시장의 [${symbol}] (실시간 현재가: $${price}, 전일 대비 변동률: ${changePercent}) 종목에 대해 시장 트렌드와 해당 기업의 실제 재무 상태를 바탕으로 전문적인 투자 리포트를 한국어로 '실시간' 작성해줘. 
+미국 주식 시장의 [${symbol}] (실시간 현재가: $${price}, 전일 대비 변동률: ${changePercent}) 종목에 대해 시장 트렌드와 공개된 재무 데이터를 바탕으로 전문적인 투자 리포트를 한국어로 실시간 작성해줘. 
 
-출력할 때 반드시 아래 형식을 한 글자도 틀리지 말고 정확히 지켜서 마크다운 스타일로 작성해줘:
+출력할 때 반드시 아래 형식을 정확히 지켜서 마크다운 스타일로 작성해줘:
 
 **1. 비즈니스 모델 및 수익 구조**
 (여기에 ${symbol}의 실제 비즈니스 모델 상세 내용 작성)
@@ -65,12 +65,12 @@ export async function POST(req) {
 (여기에 상세 내용 작성)
 
 * 주의사항: 
-1. 고정된 틀을 복사하지 말고, 입력된 [${symbol}] 기업의 업종과 재무 상태에 맞는 '진짜 분석 내용'을 실시간으로 서술해줘.
+1. 고정된 틀을 복사하지 말고, 입력된 [${symbol}] 기업의 업종과 특징에 맞는 '진짜 분석 내용'을 실시간으로 서술해줘.
 2. 각 대문단 번호(1., 2., 3...)가 시작하는 부분은 반드시 별표 두 개를 써서 **굵은 글씨**로 표현하고, 3번 문단의 각 지표명 역시 반드시 **굵은 글씨**로 구분해줘.`;
 
-    // 3. 회원님의 API 키 권한 문제를 원천 해결하는 가장 표준적인 범용 주소 규격 적용
-    // 엔드포인트를 구형/신형 키 모두 100% 호환되는 'v1/models/gemini-pro'로 단일화합니다.
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key=${GEMINI_KEY}`;
+    // 3. 구글 AI 스튜디오 최신 표준 규격 주소 및 페이로드 세팅
+    // 기존의 v1/models/gemini-pro 대신 100% 호환되는 최신 v1beta의 gemini-1.5-flash 규격을 적용합니다.
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
     
     const geminiRes = await fetch(geminiUrl, {
       method: 'POST',
@@ -82,16 +82,16 @@ export async function POST(req) {
 
     const geminiData = await geminiRes.json();
     
-    // 구글 서버가 응답한 텍스트 추출
+    // 구글 AI가 실시간으로 생성한 텍스트 추출
     let reportText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
 
-    // 만약 에러가 발생했거나 응답이 비어있다면, 화면을 터트리지 않고 깔끔하게 안내 메시지 출력
+    // 만약 구글 서버에서 에러가 응답되었을 경우 화면을 터트리지 않고 에러 메시지 가독성 있게 출력
     if (geminiData.error || !reportText) {
-      const errMsg = geminiData.error?.message || '이유 알 수 없음';
-      reportText = `**구글 AI 연동에 실패했습니다.**\n\n현재 Vercel 환경 변수에 등록된 \`GEMINI_API_KEY\`가 올바르지 않거나 구글 AI 스튜디오 서버의 일시적인 제한 상태입니다.\n\n*(구글 서버 에러 메시지: ${errMsg})*`;
+      const errMsg = geminiData.error?.message || '알 수 없는 오류';
+      reportText = `**구글 AI 실시간 연동 에러 발생**\n\n- 메시지: ${errMsg}\n- 해결책: Vercel 환경 변수의 \`GEMINI_API_KEY\`가 올바른지 확인하거나, 잠시 후 다시 시도해 주세요.`;
     }
 
-    // 4. 프론트엔드로 실시간 결과 데이터 전송
+    // 4. 프론트엔드로 데이터 전송
     return NextResponse.json({ 
       symbol, 
       name: symbol, 
