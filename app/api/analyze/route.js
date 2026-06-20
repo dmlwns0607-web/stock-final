@@ -6,10 +6,10 @@ export async function POST(req) {
     if (!ticker) return NextResponse.json({ error: '티커를 입력하세요.' }, { status: 400 });
     const symbol = ticker.trim().toUpperCase();
 
-    // Vercel 환경변수에 등록된 구글 API 키를 가져옵니다.
+    // Vercel 환경변수에서 구글 API 키 바인딩
     const GEMINI_KEY = (process.env.GEMINI_API_KEY || '').trim();
 
-    // 1. 야후 파이낸스에서 실시간 주가 데이터 가져오기
+    // 1. 야후 파이낸스 실시간 주가 데이터 fetch
     const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=5d`;
     const yahooRes = await fetch(yahooUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
     
@@ -30,8 +30,8 @@ export async function POST(req) {
       }
     }
 
-    // 2. 제미나이 AI 실시간 분석을 위한 정밀 프롬프트 설정 (굵은 글씨 가독성 요구 반영)
-    const prompt = `너는 글로벌 최고 권위의 주식 심층 분석가이자 수석 연구원이야. 
+    // 2. 가독성 규칙(대문단 볼드, 재무 지표명 볼드)을 각인시킨 실시간 커스텀 프롬프트
+    const promptText = `너는 글로벌 최고 권위의 주식 심층 분석가이자 수석 연구원이야. 
 미국 주식 시장의 [${symbol}] (실시간 현재가: $${price}, 전일 대비 변동률: ${changePercent}) 종목에 대해 시장 트렌드와 공개된 재무 데이터를 바탕으로 전문적인 투자 리포트를 한국어로 실시간 작성해줘. 
 
 출력할 때 반드시 아래 형식을 정확히 지켜서 작성해줘:
@@ -64,28 +64,41 @@ export async function POST(req) {
 
 * 주의: 각 대문단 번호(1., 2., 3...)가 시작하는 부분은 반드시 별표 두 개를 써서 **굵은 글씨**로 표현하고, 3번 문단의 각 지표명(**매출 성장성 (Revenue Growth):** 등) 역시 반드시 **굵은 글씨**로 구분해줘.`;
 
-    // 3. 구글 AI 에러를 100% 방지하는 정석 v1beta models 주소 규격 적용
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
+    // 3. 구글 공식 SDK 표준 규격 엔드포인트 세팅 (v1 주소 + 정석 JSON 본문 패턴)
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
 
     const geminiRes = await fetch(geminiUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json'
+      },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }]
-      }),
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: promptText }]
+          }
+        ],
+        generationConfig: {
+          temperature: 0.2,
+          topP: 0.95
+        }
+      })
     });
 
     const geminiData = await geminiRes.json();
     
-    // 구글 서버 에러 리턴 시 메시지 핸들링
+    // 구글 서버 에러 블록 완벽 트래킹
     if (geminiData.error) {
-      return NextResponse.json({ error: `구글 AI 에러: ${geminiData.error.message}` }, { status: 500 });
+      return NextResponse.json({ 
+        error: `구글 AI 응답 에러: ${geminiData.error.message} (코드: ${geminiData.error.code})` 
+      }, { status: 500 });
     }
 
-    // 실시간 생성된 리포트 텍스트 추출
-    const reportText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '리포트 실시간 생성에 실패했습니다.';
+    // 최종 텍스트 안전하게 축출
+    const reportText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || 'AI 리포트 실시간 추출에 실패했습니다.';
 
-    // 프론트엔드(화면)로 실시간 결과 데이터 전송
+    // 프론트엔드로 성공 데이터 전달
     return NextResponse.json({ 
       symbol, 
       name: symbol, 
@@ -93,7 +106,8 @@ export async function POST(req) {
       changePercent, 
       report: reportText 
     });
+
   } catch (err) {
-    return NextResponse.json({ error: '서버 오류가 발생했습니다.' }, { status: 500 });
+    return NextResponse.json({ error: '서버 내부 로직 에러가 발생했습니다.' }, { status: 500 });
   }
 }
