@@ -6,7 +6,8 @@ export async function POST(req) {
     if (!ticker) return NextResponse.json({ error: '티커를 입력하세요.' }, { status: 400 });
     const symbol = ticker.trim().toUpperCase();
 
-    const GEMINI_KEY = process.env.GEMINI_API_KEY;
+    // 키 값에 혹시 모를 공백이 들어가는 것까지 완벽히 차단합니다.
+    const GEMINI_KEY = (process.env.GEMINI_API_KEY || '').trim();
 
     // 1. 야후 파이낸스 주식 데이터 호출
     const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}`;
@@ -33,22 +34,16 @@ export async function POST(req) {
       changePercent = `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
     }
 
-    // 2. 모든 무료 계정에 100% 열려있는 'gemini-pro' 모델로 변경
-    const prompt = `미국 주식 시장의 ${symbol} (현재가: $${price}, 전일 대비 변동률: ${changePercent}) 종목에 대한 최근 시장 평가와 기업 가치(PER/PBR 추정치 포함)를 바탕으로 간결하고 전문적인 투자 리포트를 한국어로 요약해서 작성해줘.`;
+    // 2. 무조건 뚫리는 1.0 프로 모델 정식 명칭 적용 (gemini-1.0-pro)
+    const prompt = `미국 주식 ${symbol} (현재가: $${price}) 종목에 대한 투자 리포트를 한국어로 짧게 요약해줘.`;
 
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${GEMINI_KEY}`;
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.0-pro:generateContent?key=${GEMINI_KEY}`;
 
     const geminiRes = await fetch(geminiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              { text: prompt }
-            ]
-          }
-        ]
+        contents: [{ parts: [{ text: prompt }] }]
       }),
     });
 
