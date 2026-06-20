@@ -6,25 +6,22 @@ export async function POST(req) {
     if (!ticker) return NextResponse.json({ error: '티커를 입력하세요.' }, { status: 400 });
     const symbol = ticker.trim().toUpperCase();
 
-    // Vercel 환경변수에서 구글 API 키 안전하게 바인딩
-    const GEMINI_KEY = (process.env.GEMINI_API_KEY || '').trim();
+    // Vercel 환경변수에서 구글 API 키 가져오기 (공백 완벽 제거)
+    const GEMINI_KEY = (process.env.GEMINI_API_KEY || '').replace(/\s+/g, '');
 
-    // 1. 야후 파이낸스 차단 우회용 다중 헤더 및 주소 체계 적용
+    // 1. 야후 파이낸스 실시간 주가 데이터 fetch
     let price = 'N/A';
     let changePercent = 'N/A';
     
     try {
-      // 차단을 피하기 위해 브라우저 환경과 동일한 쿼리 스트링 및 무작위 유저에이전트 설정
-      const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=5d&includeTimestamps=false`;
-      
+      const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=5d`;
       const yahooRes = await fetch(yahooUrl, { 
         method: 'GET',
         headers: { 
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
           'Accept': 'application/json',
           'Referer': 'https://finance.yahoo.com/'
-        },
-        cache: 'no-store' // 캐시로 인한 구데이터 바인딩 방지
+        }
       });
 
       if (yahooRes.ok) {
@@ -32,11 +29,8 @@ export async function POST(req) {
         const resultData = yahooData.chart?.result?.[0];
         if (resultData) {
           const meta = resultData.meta;
-          // 실시간 현재가 추출
           const rawPrice = meta.regularMarketPrice;
           price = rawPrice ? Number(rawPrice).toFixed(2) : 'N/A';
-          
-          // 전일 종가 기준 등락률 계산
           const previousClose = meta.previousClose;
           if (rawPrice && previousClose) {
             const change = ((rawPrice - previousClose) / previousClose) * 100;
@@ -45,18 +39,15 @@ export async function POST(req) {
         }
       }
     } catch (e) {
-      // 데이터 수집 에러 시 공백 방지를 위한 임시 디폴트값 세팅
-      price = '200.00';
-      changePercent = '+1.20%';
+      // 주가 크롤링 실패 시 기본값 세팅
     }
 
-    // 혹시라도 야후 파이낸스가 완전 차단되어 N/A가 떴을 때 AI 프롬프트가 뻗는 것을 방지
     if (price === 'N/A' || !price) {
       price = '최신 데이터 반영 중';
       changePercent = '연동 중';
     }
 
-    // 2. 가독성 규칙(대문단 볼드, 재무 지표명 볼드)을 각인시킨 실시간 커스텀 프롬프트
+    // 2. AI 분석 프롬프트
     const promptText = `너는 글로벌 최고 권위의 주식 심층 분석가이자 수석 연구원이야. 
 미국 주식 시장의 [${symbol}] (실시간 현재가: $${price}, 전일 대비 변동률: ${changePercent}) 종목에 대해 시장 트렌드와 공개된 재무 데이터를 바탕으로 전문적인 투자 리포트를 한국어로 실시간 작성해줘. 
 
@@ -88,9 +79,9 @@ export async function POST(req) {
 **7. 향후 12-24개월 주가 및 기업 전망**
 (여기에 상세 내용 작성)
 
-* 주의: 각 대문단 번호(1., 2., 3...)가 시작하는 부분은 반드시 별표 두 개를 써서 **굵은 글씨**로 표현하고, 3번 문단의 각 지표명(**매출 성장성 (Revenue Growth):** 등) 역시 반드시 **굵은 글씨**로 구분해줘.`;
+* 주의: 각 대문단 번호(1., 2., 3...)가 시작하는 부분은 반드시 별표 두 개를 써서 **굵은 글씨**로 표현하고, 3번 문단의 각 지표명 역시 반드시 **굵은 글씨**로 구분해줘.`;
 
-    // 3. 구글 공식 최신 엔드포인트 호출 규격 세팅
+    // 3. 구글 공식 엔드포인트 호출
     const geminiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
 
     const geminiRes = await fetch(geminiUrl, {
@@ -103,10 +94,16 @@ export async function POST(req) {
 
     const geminiData = await geminiRes.json();
     
-    // 최종 텍스트 추출
-    const reportText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || 'AI 리포트 실시간 생성에 실패했습니다. 티커를 다시 확인해 주세요.';
+    // 텍스트 추출 시도
+    let reportText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
 
-    // 4. 프론트엔드로 성공 데이터 리턴
+    // 만약 구글 응답에 에러가 있거나 텍스트가 안 왔다면, 구글 서버가 뱉은 날것의 에러 메시지를 화면에 출력합니다.
+    if (geminiData.error || !reportText) {
+      const googleErrorMsg = geminiData.error?.message || JSON.stringify(geminiData);
+      reportText = `**구글 AI 반환 에러 확인 필요**\n\n- **구글 서버 응답 메시지**: ${googleErrorMsg}\n\n- **대처 방법**: 만약 메시지에 'API key not valid'나 'invalid' 관련 내용이 있다면 Vercel 대시보드의 Environment Variables에 등록한 \`GEMINI_API_KEY\`를 구글 AI 스튜디오에서 새로 발급받아 다시 정확하게 입력해야 합니다.`;
+    }
+
+    // 4. 프론트엔드로 전송
     return NextResponse.json({ 
       symbol, 
       name: symbol, 
