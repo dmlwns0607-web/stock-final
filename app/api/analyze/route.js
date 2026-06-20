@@ -33,10 +33,10 @@ export async function POST(req) {
       changePercent = `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
     }
 
-    // 2. 무료 요금제 전용 v1beta 완벽 규격 주소 및 포맷 세팅
+    // 2. 모든 무료 계정에 100% 열려있는 'gemini-pro' 모델로 변경
     const prompt = `미국 주식 시장의 ${symbol} (현재가: $${price}, 전일 대비 변동률: ${changePercent}) 종목에 대한 최근 시장 평가와 기업 가치(PER/PBR 추정치 포함)를 바탕으로 간결하고 전문적인 투자 리포트를 한국어로 요약해서 작성해줘.`;
 
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${GEMINI_KEY}`;
 
     const geminiRes = await fetch(geminiUrl, {
       method: 'POST',
@@ -54,7 +54,6 @@ export async function POST(req) {
 
     const geminiData = await geminiRes.json();
     
-    // 구글 에러 반환 체크
     if (geminiData.error) {
       return NextResponse.json({ error: `AI 에러: ${geminiData.error.message}` }, { status: 500 });
     }
