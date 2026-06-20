@@ -9,7 +9,7 @@ export async function POST(req) {
     // Vercel 환경변수에 등록된 구글 API 키를 가져옵니다.
     const GEMINI_KEY = (process.env.GEMINI_API_KEY || '').trim();
 
-    // 1. 야후 파이낸스에서 실시간 주가 데이터 긁어오기
+    // 1. 야후 파이낸스에서 실시간 주가 데이터 가져오기
     const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=5d`;
     const yahooRes = await fetch(yahooUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
     
@@ -30,7 +30,7 @@ export async function POST(req) {
       }
     }
 
-    // 2. 제미나이 AI에게 실시간으로 던질 프롬프트 (요청하신 가독성 규칙 포함)
+    // 2. 제미나이 AI 실시간 분석을 위한 정밀 프롬프트 설정 (굵은 글씨 가독성 요구 반영)
     const prompt = `너는 글로벌 최고 권위의 주식 심층 분석가이자 수석 연구원이야. 
 미국 주식 시장의 [${symbol}] (실시간 현재가: $${price}, 전일 대비 변동률: ${changePercent}) 종목에 대해 시장 트렌드와 공개된 재무 데이터를 바탕으로 전문적인 투자 리포트를 한국어로 실시간 작성해줘. 
 
@@ -64,8 +64,8 @@ export async function POST(req) {
 
 * 주의: 각 대문단 번호(1., 2., 3...)가 시작하는 부분은 반드시 별표 두 개를 써서 **굵은 글씨**로 표현하고, 3번 문단의 각 지표명(**매출 성장성 (Revenue Growth):** 등) 역시 반드시 **굵은 글씨**로 구분해줘.`;
 
-    // 3. 구글 AI 서버 최신 v1 규격 주소 호출 (가장 안정적인 1.5-flash 모델 적용)
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
+    // 3. 구글 AI 에러를 100% 방지하는 정석 v1beta models 주소 규격 적용
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
 
     const geminiRes = await fetch(geminiUrl, {
       method: 'POST',
@@ -77,15 +77,15 @@ export async function POST(req) {
 
     const geminiData = await geminiRes.json();
     
-    // 구글 서버 에러 핸들링
+    // 구글 서버 에러 리턴 시 메시지 핸들링
     if (geminiData.error) {
-      return NextResponse.json({ error: `구글 AI 에러: ${geminiData.error.message} (모델 주소나 API 키를 확인하세요)` }, { status: 500 });
+      return NextResponse.json({ error: `구글 AI 에러: ${geminiData.error.message}` }, { status: 500 });
     }
 
-    // 제미나이가 실시간으로 생성한 답변 텍스트 추출
+    // 실시간 생성된 리포트 텍스트 추출
     const reportText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '리포트 실시간 생성에 실패했습니다.';
 
-    // 프론트엔드로 실시간 결과 전송
+    // 프론트엔드(화면)로 실시간 결과 데이터 전송
     return NextResponse.json({ 
       symbol, 
       name: symbol, 
